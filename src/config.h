@@ -1,15 +1,12 @@
 #pragma once
 #include <Arduino.h>
 
-// ============================
 // BUILD MODE SELECTION
-// ============================
+
 // Choose ONE at compile time.
 // - MODE_SCRIPT: run the existing scripted motion demo.
 // - MODE_AUTO:   run a basic micromouse flood-fill solver.
-//
-// Override from PlatformIO if desired:
-//   build_flags = -DRUN_MODE=MODE_AUTO
+
 
 #define MODE_SCRIPT 1
 #define MODE_AUTO   2
@@ -18,11 +15,8 @@
   #define RUN_MODE MODE_SCRIPT
 #endif
 
-// ============================
 // AUTO TURN PRIMITIVE
-// ============================
 // AutoRunner generates motion as a short script (turn + MoveCells).
-// Select which primitive Auto uses for turning.
 // - AUTO_TURN_INPLACE: StepType::TurnDeg (stop-and-turn)
 // - AUTO_TURN_DRIFT:   StepType::DriftDeg (moving arc, blends into next Move)
 
@@ -63,17 +57,45 @@ static constexpr int UART_RX_PIN = 15;
 // MSP function
 static constexpr uint16_t MSP_ATTITUDE = 108;
 
-// ============================
 // USER INPUT
-// ============================
 // Start/Stop toggle button (active LOW). User stated IO11 pulled down to GND when pressed.
 static constexpr int PIN_BTN_STARTSTOP = 35;
 static constexpr uint32_t START_DELAY_MS = 700;
 
+//RGB LED (WS2812)
+// Chỉnh các giá trị theo phần cứng của bạn
+#define RGB_LED_PIN            21        // IO21 như bạn yêu cầu
+#define RGB_LED_COUNT          1         // Số LED WS2812 (đổi nếu cần)
 
-// ============================
+// Định nghĩa 4 màu
+#define RGB_COLOR1_R           0
+#define RGB_COLOR1_G           255
+#define RGB_COLOR1_B           0    // ví dụ: xanh lá
+
+#define RGB_COLOR2_R           0
+#define RGB_COLOR2_G           0
+#define RGB_COLOR2_B           255  // ví dụ: xanh dương
+
+#define RGB_COLOR3_R           255
+#define RGB_COLOR3_G           0
+#define RGB_COLOR3_B           0    // ví dụ: đỏ
+
+#define RGB_COLOR4_R           255
+#define RGB_COLOR4_G           255
+#define RGB_COLOR4_B           0    // ví dụ: vàng
+
+// Rainbow behaviour
+//  - RGB_RAINBOW_SMOOTH = 1 -> chuyển mượt (hue wheel)
+//  - RGB_RAINBOW_SMOOTH = 0 -> chuyển theo bước 7 màu (nhảy)
+#define RGB_RAINBOW_SMOOTH     1
+#define RGB_RAINBOW_STEP_MS    150      // ms giữa các bước trong chế độ 'step'
+#define RGB_RAINBOW_SPEED_MS   20       // ms per hue increment trong chế độ 'smooth'
+
+// Brightness (0.0f .. 1.0f)
+#define RGB_BRIGHTNESS         0.6f
+
+
 // IR SENSORS (ADC)
-// ============================
 // Photosensor modules with 10k pull-up to 3V3 (inverted):
 //   - Wall present   => ADC small (your typical: 350-400 @ 13-bit)
 //   - No wall/open   => ADC large (your typical: 4000-7000 @ 13-bit)

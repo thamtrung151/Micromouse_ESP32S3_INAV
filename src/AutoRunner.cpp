@@ -1,4 +1,5 @@
 #include "AutoRunner.h"
+#include "rgb.h"
 
 static inline int clampi(int v, int lo, int hi) { return (v < lo) ? lo : (v > hi ? hi : v); }
 
@@ -135,6 +136,7 @@ void AutoRunner::update() {
 
     if (isGoalCell(_x, _y)) {
       _reachedGoal = true;
+      RGB_setArrived(true);
       _running = false;
       _m->setEnabled(false);
       return;

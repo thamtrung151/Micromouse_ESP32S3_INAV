@@ -1,7 +1,7 @@
 #include "imu.h"
 #include "config.h"
 #include "AngleUtils.h"
-
+#include "rgb.h"
 
 #ifndef FC_BOOT_SETTLE_MS
 #define FC_BOOT_SETTLE_MS 2000
@@ -215,6 +215,7 @@ void ImuMsp::begin() {
 
   // Quy ước: sau khi boot xong, reset heading một lần
   resetHeading();
+  RGB_setFCReady(true);
 }
 
 void ImuMsp::update() {

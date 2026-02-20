@@ -5,6 +5,7 @@
 #include "config.h"
 #include "Motion.h"
 #include "Button.h"
+#include <rgb.h>
 
 #if (RUN_MODE == MODE_AUTO)
   #include "AutoRunner.h"
@@ -24,9 +25,11 @@ static const Step script[] = {
   // { StepType::RunDistance, -40, 0 }, // khoảng cách theo mm
   { StepType::MoveCells, 1, 0 },
   { StepType::TurnDeg, 90, +1 },
-
+  
+  
 
 };
+
 #endif
 
 Motion motion;
@@ -42,26 +45,31 @@ static uint32_t startDueMs = 0;
 
 void setup() {
   
-
   Serial.begin(115200);
   delay(200);
 
   btn.begin(PIN_BTN_STARTSTOP);
   motion.begin();
   motion.setEnabled(false);
+  RGB_init();
 
 #if (RUN_MODE == MODE_SCRIPT)
   motion.loadScript(script, sizeof(script) / sizeof(script[0]));
   Serial.println("Micromouse: SCRIPT mode ready. Press button to Start/Stop.");
+  RGB_setFCReady(true);
+
 #elif (RUN_MODE == MODE_AUTO)
   autoRunner.begin(motion);
   Serial.println("Micromouse: AUTO mode ready (flood-fill BFS). Press button to Start/Stop.");
+  RGB_setFCReady(true);
 #else
   #error "Invalid RUN_MODE. Use MODE_SCRIPT or MODE_AUTO."
 #endif
 }
 
 void loop() {
+  
+  RGB_loop();
   // Toggle start/stop on button press
   if (btn.pressed()) {
     // If we are stopped -> arm a delayed start.
@@ -90,6 +98,9 @@ void loop() {
     startPending = false;
     runEnabled = true;
     motion.setEnabled(true);
+    
+    RGB_setStarted(true);
+
 #if (RUN_MODE == MODE_AUTO)
     autoRunner.start();
 #endif
@@ -97,6 +108,18 @@ void loop() {
 
   // Always keep the motion system running its sensor fusion.
   motion.update();
+
+  
+#if (RUN_MODE == MODE_SCRIPT)
+  static bool scriptDoneNotified = false;
+
+  if (motion.done() && !scriptDoneNotified) {
+    RGB_setArrived(true);        // <<< ĐẶT CHÍNH XÁC Ở ĐÂY
+    scriptDoneNotified = true;   // đảm bảo chỉ gọi 1 lần
+  }
+#endif
+
+
 
 #if (RUN_MODE == MODE_AUTO)
   // High-level planner
