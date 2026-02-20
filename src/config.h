@@ -71,12 +71,6 @@ static constexpr int PIN_BTN_STARTSTOP = 35;
 static constexpr uint32_t START_DELAY_MS = 700;
 
 
-
-const int pwmPin = 18;        // IO18
-const int pwmChannel = 7;     // Kênh PWM (0–7 hoặc 0–15 tùy core)
-const int pwmFreq = 20000;    // Tần số PWM: 20 kHz (phù hợp MOSFET, ít ồn)
-const int pwmResolution = 8;  // Độ phân giải 8-bit (0–255)
-
 // ============================
 // IR SENSORS (ADC)
 // ============================

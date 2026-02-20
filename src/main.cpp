@@ -41,14 +41,6 @@ static bool startPending = false;
 static uint32_t startDueMs = 0;
 
 void setup() {
-
-  ledcSetup(pwmChannel, pwmFreq, pwmResolution);
-  ledcAttachPin(pwmPin, pwmChannel);
-
-  // // Duty ~60%
-  // int duty = (int)(0.5 * 255);  // ≈ 153
-  // ledcWrite(pwmChannel, duty);
-
   
 
   Serial.begin(115200);
