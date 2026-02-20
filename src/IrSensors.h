@@ -9,6 +9,8 @@ class IrSensors {
 public:
   void begin();
   void update(float dt);
+  void enableIR(bool enable);
+  bool irEnabled() const;
 
   // Filtered readings (0..8191 for 13-bit)
   uint16_t ir1() const { return _ir1; } // left side

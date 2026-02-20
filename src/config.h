@@ -109,11 +109,24 @@ static constexpr int IR4_PIN = 5;   // right side
 static constexpr int IR_ADC_BITS = 13; // 0..8191
 
 // Wall detection thresholds. Because the sensor is inverted, a wall is detected when ADC < TH.
-static constexpr uint16_t IR_SIDE_WALL_TH  = 8000; // ir1/ir4 < th => side wall
-static constexpr uint16_t IR_FRONT_WALL_TH =7500; // ir2/ir3 < th => front wall
+static constexpr uint16_t IR_SIDE_WALL_TH  = 7300; // ir1/ir4 < th => side wall
+static constexpr uint16_t IR_FRONT_WALL_TH =7100; // ir2/ir3 < th => front wall
 
 // IR low-pass filter time constant (seconds). Lower = more responsive, higher = smoother.
 static constexpr float IR_LP_TAU_S = 0.020f;
+
+// FET N control pin for IR LED
+#define PIN_IR_FET            18    // IO18
+
+// IR LED power (0.0f .. 1.0f)
+#define IR_POWER              0.75f  // chỉnh công suất IR LED
+
+// IR carrier frequency
+#define IR_CARRIER_FREQ_HZ    20000 // 20 kHz
+
+// Delay before enabling IR after boot (ms)
+#define IR_ENABLE_DELAY_MS    000  // 6 seconds
+
 
 // ============================
 // WALL CORRECTION (CENTERING)
@@ -147,14 +160,14 @@ static constexpr float  PI_F     = 3.1415926f;
 static constexpr int16_t YAW_WRAP = 3600;
 
 // ROBOT GEOMETRY
-static constexpr float WHEEL_DIAMETER_MM     = 27.4f;
+static constexpr float WHEEL_DIAMETER_MM     = 27.8f;
 static constexpr float COUNTS_PER_OUTPUT_REV = 217.77777777f;
 static constexpr float WHEELBASE_MM          = 51.7f;
 
 static constexpr float MM_PER_COUNT = (PI_F * WHEEL_DIAMETER_MM) / COUNTS_PER_OUTPUT_REV;
 
 // Cell size
-static constexpr float CELL_MM = 176.0f;
+static constexpr float CELL_MM = 180.0f;
 
 // FUSION SENSORs
 static constexpr float FUSION_ALPHA_IMU = 0.92f;

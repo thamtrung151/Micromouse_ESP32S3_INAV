@@ -23,9 +23,7 @@ static const Step script[] = {
   // { StepType::DriftDeg, 90, +1 }, //Cua quanh tâm nằm ngoài robot, chọn góc bất kì, +1 right, -1 left
   // { StepType::BackAlign, 80, 0 }, //căn đuôi
   // { StepType::RunDistance, -40, 0 }, // khoảng cách theo mm
-  { StepType::MoveCells, 1, 0 },
-  { StepType::TurnDeg, 90, +1 },
-  
+  { StepType::RunDistance, 540, 0 },
   
 
 };
@@ -109,7 +107,7 @@ void loop() {
   // Always keep the motion system running its sensor fusion.
   motion.update();
 
-  
+
 #if (RUN_MODE == MODE_SCRIPT)
   static bool scriptDoneNotified = false;
 

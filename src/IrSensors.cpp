@@ -1,6 +1,22 @@
 #include "IrSensors.h"
 
+static constexpr uint8_t IR_PWM_CH = 7;
+static bool ir_on = false;
+static uint32_t bootMs = 0;
+
 void IrSensors::begin() {
+
+  bootMs = millis();
+
+  // Setup IR FET PWM
+  ledcSetup(IR_PWM_CH, IR_CARRIER_FREQ_HZ, 10); // 10-bit resolution
+  ledcAttachPin(PIN_IR_FET, IR_PWM_CH);
+
+  // Start with IR OFF
+  ledcWrite(IR_PWM_CH, 0);
+  ir_on = false;
+
+
   analogReadResolution(IR_ADC_BITS);
   pinMode(IR1_PIN, INPUT);
   pinMode(IR2_PIN, INPUT);
@@ -15,6 +31,11 @@ void IrSensors::begin() {
 }
 
 void IrSensors::update(float dt) {
+    // Delay IR enable after boot
+  if (!ir_on && (millis() - bootMs >= IR_ENABLE_DELAY_MS)) {
+    enableIR(true);
+  }
+
   if (dt <= 0.0f) return;
   const float alpha = dt / (IR_LP_TAU_S + dt);
 
@@ -57,4 +78,22 @@ int16_t IrSensors::wallYawBias10(uint16_t straightPwmCmd) const {
   if (corr > (float)WALL_CORR_MAX_YAW10) corr = (float)WALL_CORR_MAX_YAW10;
   if (corr < -(float)WALL_CORR_MAX_YAW10) corr = -(float)WALL_CORR_MAX_YAW10;
   return (int16_t)lroundf(corr);
+}
+
+
+
+void IrSensors::enableIR(bool enable) {
+  if (enable && !ir_on) {
+    uint32_t duty = (uint32_t)(IR_POWER * 1023.0f);
+    ledcWrite(IR_PWM_CH, duty);
+    ir_on = true;
+  }
+  else if (!enable && ir_on) {
+    ledcWrite(IR_PWM_CH, 0);
+    ir_on = false;
+  }
+}
+
+bool IrSensors::irEnabled() const {
+  return ir_on;
 }
