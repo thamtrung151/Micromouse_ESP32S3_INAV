@@ -29,7 +29,7 @@ public:
   void autoStartRunDistance(float mm, int16_t headingTarget10);
   void autoStartRearAlign(float maxBackMm, int16_t headingTarget10);
   void autoStartTurn(int deg, int dir); // dir: -1 left, +1 right
-  void autoStartSpeedTurn(int dir);     // dir: -1 left, +1 right
+  void autoStartSpeedTurn(int dir, float radiusMm, float centerSpeedMmS); // dir: -1 left, +1 right
   void autoBrake(uint32_t holdMs, bool holdAfter = false);
   bool autoInStraight() const { return _directMode == DirectMode::Straight; }
   bool autoRunningDistance() const { return _directMode == DirectMode::RunDistance; }
@@ -119,10 +119,13 @@ private:
   int16_t _turnTargetYaw10 = 0;
   int _turnStable = 0;
 
-  // Speed-turn state (continuous cornering in speed-run).
+  // Speed-turn state (continuous ARC cornering in speed-run).
   int8_t  _autoSpeedTurnDir = +1;
   float   _autoSpeedTurnStartDist = 0.0f;
-  float   _autoSpeedTurnEndDist = 0.0f;
+  float   _autoSpeedTurnRadiusMm = 0.0f;
+  float   _autoSpeedTurnArcLenMm = 0.0f;
+  float   _autoSpeedTurnTargetSpeedMmS = 0.0f;
+  float   _autoSpeedTurnSpeedI = 0.0f;
   int16_t _autoSpeedTurnStartYaw10 = 0;
   int16_t _autoSpeedTurnFinalYaw10 = 0;
 

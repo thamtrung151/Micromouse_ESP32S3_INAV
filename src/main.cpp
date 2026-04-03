@@ -15,6 +15,8 @@ AutoRunner autoRunner;
 
 static bool startPending = false;
 static uint32_t startDueMs = 0;
+static uint32_t savedMapClearArmMs = 0;
+static constexpr uint32_t kSavedMapClearArmDelayMs = 1500;
 
 enum class AutoStartMode : uint8_t {
   Explore = 0,
@@ -92,11 +94,15 @@ void setup() {
   Serial.begin(115200);
   delay(200);
 
+  Serial.printf("Config: SPEEDRUN_PRETURN_ENABLE=%d\n",
+                SPEEDRUN_PRETURN_ENABLE ? 1 : 0);
+
   btn.begin(PIN_BTN_STARTSTOP);
   motion.begin();
   motion.setEnabled(false);
   RGB_init();
   autoRunner.begin(motion);
+  savedMapClearArmMs = millis() + kSavedMapClearArmDelayMs;
   Serial.println("Micromouse: AUTO mode ready. Finger start explores or speed-runs saved map; button clears saved map.");
   RGB_setFCReady(true);
 }
@@ -108,7 +114,7 @@ void loop() {
   motion.update();
   const bool autoBusy = autoRunner.running();
 
-  if (btn.pressed() && !autoBusy) {
+  if (btn.pressed() && !autoBusy && (int32_t)(millis() - savedMapClearArmMs) >= 0) {
     startPending = false;
     motion.setEnabled(false);
     fingerStartCancelVisuals();

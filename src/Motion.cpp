@@ -71,7 +71,10 @@ void Motion::begin() {
   _autoRearAlignBackedMm = 0.0f;
   _autoSpeedTurnDir = +1;
   _autoSpeedTurnStartDist = 0.0f;
-  _autoSpeedTurnEndDist = 0.0f;
+  _autoSpeedTurnRadiusMm = 0.0f;
+  _autoSpeedTurnArcLenMm = 0.0f;
+  _autoSpeedTurnTargetSpeedMmS = 0.0f;
+  _autoSpeedTurnSpeedI = 0.0f;
   _autoSpeedTurnStartYaw10 = 0;
   _autoSpeedTurnFinalYaw10 = 0;
 
@@ -94,7 +97,10 @@ void Motion::autoClear() {
   _autoRearAlignBackedMm = 0.0f;
   _autoSpeedTurnDir = +1;
   _autoSpeedTurnStartDist = 0.0f;
-  _autoSpeedTurnEndDist = 0.0f;
+  _autoSpeedTurnRadiusMm = 0.0f;
+  _autoSpeedTurnArcLenMm = 0.0f;
+  _autoSpeedTurnTargetSpeedMmS = 0.0f;
+  _autoSpeedTurnSpeedI = 0.0f;
   _autoSpeedTurnStartYaw10 = 0;
   _autoSpeedTurnFinalYaw10 = 0;
   _turnStable = 0;
@@ -188,7 +194,7 @@ void Motion::autoStartTurn(int deg, int dir) {
   _turnTargetYaw10 = wrapYaw10((int32_t)_turnStartYaw10 + delta10);
 }
 
-void Motion::autoStartSpeedTurn(int dir) {
+void Motion::autoStartSpeedTurn(int dir, float radiusMm, float centerSpeedMmS) {
   _directMode = DirectMode::SpeedTurn;
   _autoRunDoneFlag = false;
   _autoRearAlignDoneFlag = false;
@@ -197,19 +203,22 @@ void Motion::autoStartSpeedTurn(int dir) {
   _ir.resetWallController();
 
   _autoSpeedTurnDir = (dir >= 0) ? +1 : -1;
+  _autoSpeedTurnRadiusMm = fmaxf(radiusMm, 0.5f * WHEELBASE_MM + 1.0f);
+  _autoSpeedTurnArcLenMm = 0.5f * PI_F * _autoSpeedTurnRadiusMm;
+  _autoSpeedTurnTargetSpeedMmS = fmaxf(centerSpeedMmS, V_CREEP_MM_S);
+  _autoSpeedTurnSpeedI = 0.0f;
   _autoSpeedTurnStartDist = _odo.distMm();
-  // Keep the curved section and the configured post-turn settle distance together.
-  _autoSpeedTurnEndDist =
-      _autoSpeedTurnStartDist + SPEEDRUN_PRETURN_ARC_MM + SPEEDRUN_PRETURN_FINISH_EXTRA_MM;
   _autoSpeedTurnStartYaw10 = _fusedYaw10;
   _autoSpeedTurnFinalYaw10 =
       wrapYaw10((int32_t)_autoSpeedTurnStartYaw10 + (int32_t)_autoSpeedTurnDir * (int32_t)SPEEDRUN_PRETURN_YAW_DEG * 10);
 
   _distPrev = _autoSpeedTurnStartDist;
+  _vRaw = 0.0f;
+  _vFilt = 0.0f;
   _yawErrPrev10 = 0;
   _autoStraightWallCorr = false;
   if (_pwmCmd <= 0) {
-    _pwmCmd = constrain(SPEEDRUN_PRETURN_OUTER_PWM, 0, PWM_MAX);
+    _pwmCmd = constrain(SPEEDRUN_PRETURN_CENTER_PWM, 0, PWM_MAX);
   }
 }
 
@@ -571,38 +580,75 @@ void Motion::tickAutoSpeedTurn(float dt) {
   const float alpha = dt / (SPEED_TAU_S + dt);
   _vFilt += alpha * (_vRaw - _vFilt);
 
-  int corr = 0;
-  if (SPEEDRUN_PRETURN_CORR_LIM > 0) {
-    const int16_t err10 = yawDiff10(_autoSpeedTurnFinalYaw10, _fusedYaw10);
-    const int16_t derr10 = (int16_t)((int32_t)err10 - (int32_t)_yawErrPrev10);
-    _yawErrPrev10 = err10;
-    const float derr10_s = (dt > 0.0f) ? ((float)derr10 / dt) : 0.0f;
-    corr = (int)lroundf(AUTO_HEADING_KP * (float)err10 + AUTO_HEADING_KD * derr10_s);
-    corr = constrain(corr, -SPEEDRUN_PRETURN_CORR_LIM, +SPEEDRUN_PRETURN_CORR_LIM);
+  const float progressMm = distNow - _autoSpeedTurnStartDist;
+  float arcProgressMm = progressMm;
+  if (arcProgressMm < 0.0f) arcProgressMm = 0.0f;
+  if (arcProgressMm > _autoSpeedTurnArcLenMm) arcProgressMm = _autoSpeedTurnArcLenMm;
+
+  const float yawProgressDeg =
+      (_autoSpeedTurnRadiusMm > 1e-3f) ? (arcProgressMm / _autoSpeedTurnRadiusMm) * (180.0f / PI_F) : 0.0f;
+  const int32_t yawRef10Delta = (int32_t)lroundf((float)_autoSpeedTurnDir * yawProgressDeg * 10.0f);
+  const int16_t yawRef10 = wrapYaw10((int32_t)_autoSpeedTurnStartYaw10 + yawRef10Delta);
+
+  const int baseOpenLoop = constrain(SPEEDRUN_PRETURN_CENTER_PWM, 0, PWM_MAX);
+  int base = baseOpenLoop;
+  if (AUTO_SPEED_PI_ENABLE) {
+    const float e = _autoSpeedTurnTargetSpeedMmS - _vFilt;
+    _autoSpeedTurnSpeedI += e * dt;
+    if (_autoSpeedTurnSpeedI >  AUTO_SPEED_I_LIM) _autoSpeedTurnSpeedI =  AUTO_SPEED_I_LIM;
+    if (_autoSpeedTurnSpeedI < -AUTO_SPEED_I_LIM) _autoSpeedTurnSpeedI = -AUTO_SPEED_I_LIM;
+
+    float trim = AUTO_SPEED_KP * e + AUTO_SPEED_KI * _autoSpeedTurnSpeedI;
+    if (trim >  (float)AUTO_SPEED_TRIM_LIM) trim =  (float)AUTO_SPEED_TRIM_LIM;
+    if (trim < -(float)AUTO_SPEED_TRIM_LIM) trim = -(float)AUTO_SPEED_TRIM_LIM;
+    base = constrain(baseOpenLoop + (int)lroundf(trim), 0, PWM_MAX);
+  } else {
+    _autoSpeedTurnSpeedI = 0.0f;
+  }
+  _pwmCmd = base;
+
+  const int16_t err10 = yawDiff10(yawRef10, _fusedYaw10);
+  const int16_t derr10 = (int16_t)((int32_t)err10 - (int32_t)_yawErrPrev10);
+  _yawErrPrev10 = err10;
+  const float derr10_s = (dt > 0.0f) ? ((float)derr10 / dt) : 0.0f;
+  int corr = (int)lroundf(AUTO_HEADING_KP * (float)err10 + AUTO_HEADING_KD * derr10_s);
+  corr = constrain(corr, -SPEEDRUN_PRETURN_CORR_LIM, +SPEEDRUN_PRETURN_CORR_LIM);
+
+  float leftScale = 1.0f;
+  float rightScale = 1.0f;
+  if (progressMm < _autoSpeedTurnArcLenMm) {
+    const float halfWheelbase = 0.5f * WHEELBASE_MM;
+    const float innerScale = (_autoSpeedTurnRadiusMm - halfWheelbase) / _autoSpeedTurnRadiusMm;
+    const float outerScale = (_autoSpeedTurnRadiusMm + halfWheelbase) / _autoSpeedTurnRadiusMm;
+    if (_autoSpeedTurnDir < 0) {
+      leftScale = innerScale;
+      rightScale = outerScale;
+    } else {
+      leftScale = outerScale;
+      rightScale = innerScale;
+    }
   }
 
-  int leftBase = constrain(SPEEDRUN_PRETURN_OUTER_PWM, 0, PWM_MAX);
-  int rightBase = constrain(SPEEDRUN_PRETURN_INNER_PWM, 0, PWM_MAX);
-  if (_autoSpeedTurnDir < 0) {
-    leftBase = constrain(SPEEDRUN_PRETURN_INNER_PWM, 0, PWM_MAX);
-    rightBase = constrain(SPEEDRUN_PRETURN_OUTER_PWM, 0, PWM_MAX);
-  }
-
+  const int leftBase = constrain((int)lroundf((float)base * leftScale), 0, PWM_MAX);
+  const int rightBase = constrain((int)lroundf((float)base * rightScale), 0, PWM_MAX);
   const int leftCmd = constrain(leftBase + corr, 0, PWM_MAX);
   const int rightCmd = constrain(rightBase - corr, 0, PWM_MAX);
   _drv.setLeft(leftCmd);
   _drv.setRight(rightCmd);
 
-  const bool yawAtGoal =
-      (int16_t)abs(yawDiff10(_autoSpeedTurnFinalYaw10, _fusedYaw10)) <= SPEEDRUN_PRETURN_YAW_TOL_YAW10;
-  const bool distAtGoal = distNow >= (_autoSpeedTurnEndDist - POS_TOL_MM);
+  const bool distAtGoal = progressMm >= (_autoSpeedTurnArcLenMm - POS_TOL_MM);
 
-  if (distAtGoal && yawAtGoal) {
+  if (distAtGoal) {
+    // End the speed-turn at the geometric end of the arc. Waiting for yaw to
+    // catch up here can keep the robot in a "post-arc recovery" phase where it
+    // drives almost straight before AutoRunner can plan the next corner.
     _directMode = DirectMode::Straight;
     _autoStraightHeading10 = _autoSpeedTurnFinalYaw10;
     _autoStraightWallCorr = false;
     _autoStraightStartDist = distNow;
-    _yawErrPrev10 = 0;
+    _autoStraightSpeedI = 0.0f;
+    _distPrev = distNow;
+    _yawErrPrev10 = yawDiff10(_autoStraightHeading10, _fusedYaw10);
     _autoTurnDoneFlag = true;
   }
 }

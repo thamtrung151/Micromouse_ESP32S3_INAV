@@ -2,7 +2,7 @@
 #include <Arduino.h>
 
 // CONTINUOUS AUTO
-static constexpr float AUTO_CELL_MM = 176.0f;
+static constexpr float AUTO_CELL_MM = 180.0f;
 
 static constexpr int   AUTO_STRAIGHT_PWM = 52;
 static constexpr bool  AUTO_SPEED_PI_ENABLE = true;
@@ -11,9 +11,9 @@ static constexpr float AUTO_SPEED_PI_ARM_MM = 00.0f;   // let the robot spool up
 static constexpr float AUTO_SPEED_KP = 0.33f;           // pwm per (mm/s)
 static constexpr float AUTO_SPEED_KI = 0.0023f;          // pwm per mm
 static constexpr float AUTO_SPEED_I_LIM = 1200.0f;      // integral clamp in speed-error*second domain
-static constexpr int   AUTO_SPEED_TRIM_LIM = 15;        // max +/- PWM trim from PI
-static constexpr float AUTO_HEADING_KP = 0.345f;
-static constexpr float AUTO_HEADING_KD = 0.0242f;
+static constexpr int   AUTO_SPEED_TRIM_LIM = 20;        // max +/- PWM trim from PI
+static constexpr float AUTO_HEADING_KP = 0.35f;
+static constexpr float AUTO_HEADING_KD = 0.0247f;
 static constexpr int   AUTO_HEADING_CORR_LIM = 100;
 
 static constexpr bool  AUTO_IR_GATE_ENABLE = false;
@@ -22,18 +22,17 @@ static constexpr bool  AUTO_IR_GATE_ENABLE = false;
 static constexpr uint32_t AUTO_TURN_BRAKE_MS = 150;
 static constexpr uint32_t AUTO_GOAL_BRAKE_MS = 0;
 
-// Speed-run soft pre-turn (curve into the corner instead of stop+in-place 90).
-// The robot begins curving before the turning center: trigger = center - LEAD_MM.
-static constexpr bool  SPEEDRUN_PRETURN_ENABLE = false;
-static constexpr float SPEEDRUN_PRETURN_LEAD_MM = 40.0f; // keep for map lookahead arming only
-static constexpr float SPEEDRUN_PRETURN_FRONT_TRIGGER_MM = 130.0f;
-static constexpr float SPEEDRUN_PRETURN_ARC_MM = 30.0f;
+// Speed-run ARC cornering (curve into the corner instead of stop+in-place 90).
+// Trigger point is derived from the turn-cell center and ARC radius.
+static constexpr bool  SPEEDRUN_PRETURN_ENABLE = true;
+static constexpr float SPEEDRUN_PRETURN_RADIUS_MM = 30.0f;
+static constexpr float SPEEDRUN_PRETURN_SPEED_MM_S = 170.0f;
+static constexpr int   SPEEDRUN_PRETURN_CENTER_PWM = 35;
+static constexpr float SPEEDRUN_PRETURN_LEAD_MM = 0.0f;
+static constexpr float SPEEDRUN_PRETURN_SIDELOSS_TO_TURN_CENTER_MM = 110.0f;
 static constexpr int16_t SPEEDRUN_PRETURN_YAW_DEG = 90;
-static constexpr int   SPEEDRUN_PRETURN_OUTER_PWM = 60;
-static constexpr int   SPEEDRUN_PRETURN_INNER_PWM = 0;
-static constexpr int   SPEEDRUN_PRETURN_CORR_LIM = 25;
-static constexpr int16_t SPEEDRUN_PRETURN_YAW_TOL_YAW10 = 40;
-static constexpr float SPEEDRUN_PRETURN_FINISH_EXTRA_MM = 10.0f;
+static constexpr int   SPEEDRUN_PRETURN_CORR_LIM = 45;
+static constexpr int16_t SPEEDRUN_PRETURN_YAW_TOL_YAW10 = 30;
 static constexpr float SPEEDRUN_PRETURN_TRIGGER_TOL_MM = 3.0f;
 
 // Front-wall braking in continuous AUTO.

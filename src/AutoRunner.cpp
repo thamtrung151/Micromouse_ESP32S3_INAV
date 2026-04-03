@@ -5,12 +5,11 @@
 void AutoRunner::begin(Motion& motion) {
   _m = &motion;
   const bool loaded = MazeStorage::load(_maze);
-  _savedMapReady = loaded && canSaveCurrentMap();
-  if (loaded && !_savedMapReady) {
-    MazeStorage::clear();
-  }
+  _savedMapReady = loaded;
   if (!_savedMapReady) {
     _maze.begin();
+  } else if (!canSaveCurrentMap()) {
+    Serial.println("MazeStorage: restored maze has no fully-known route; keeping it and allowing fallback solve.");
   }
   reset();
 }
@@ -152,6 +151,12 @@ void AutoRunner::clearSpeedPreTurn() {
   _speedPreTurnDir = Maze::N;
   _speedPreTurnTriggerDistMm = 0.0f;
   _speedPreTurnCenterDistMm = 0.0f;
+  _speedPreTurnRadiusMm = 0.0f;
+  _speedPreTurnSign = 0;
+  _speedPreTurnUseSideLossSync = false;
+  _speedPreTurnTurnSideWallSeen = false;
+  _speedPreTurnTurnSideLostSynced = false;
+  _speedPreTurnSideLossTriggerDistMm = 0.0f;
 }
 
 void AutoRunner::armSpeedPreTurn(bool knownOpenOnly) {
@@ -182,11 +187,68 @@ void AutoRunner::armSpeedPreTurn(bool knownOpenOnly) {
     return;
   }
 
+  const int8_t turnSign = (delta == 3) ? -1 : +1;
+  const IrSensors& ir = _m->ir();
+  const bool turnSideWallPresent = (turnSign < 0) ? ir.leftWall() : ir.rightWall();
+
   _speedPreTurnArmed = true;
   _speedPreTurnExecuting = false;
   _speedPreTurnDir = turnDir;
+  _speedPreTurnRadiusMm = fmaxf(SPEEDRUN_PRETURN_RADIUS_MM, 0.5f * WHEELBASE_MM + 1.0f);
   _speedPreTurnCenterDistMm = _centerDistMm + AUTO_CELL_MM;
-  _speedPreTurnTriggerDistMm = _speedPreTurnCenterDistMm - SPEEDRUN_PRETURN_LEAD_MM;
+  _speedPreTurnTriggerDistMm =
+      _speedPreTurnCenterDistMm - _speedPreTurnRadiusMm - SPEEDRUN_PRETURN_LEAD_MM;
+  _speedPreTurnSign = turnSign;
+  _speedPreTurnUseSideLossSync = true;
+  _speedPreTurnTurnSideWallSeen = turnSideWallPresent;
+  _speedPreTurnTurnSideLostSynced = false;
+  _speedPreTurnSideLossTriggerDistMm = _speedPreTurnTriggerDistMm;
+}
+
+void AutoRunner::updateSpeedPreTurnSyncFromSideWall() {
+  if (!_m || !_speedPreTurnArmed || _speedPreTurnExecuting) return;
+  if (!_speedPreTurnUseSideLossSync || _speedPreTurnTurnSideLostSynced || _speedPreTurnSign == 0) return;
+
+  const IrSensors& ir = _m->ir();
+  const bool turnSideWallPresent = (_speedPreTurnSign < 0) ? ir.leftWall() : ir.rightWall();
+  if (turnSideWallPresent) {
+    _speedPreTurnTurnSideWallSeen = true;
+    return;
+  }
+  if (!_speedPreTurnTurnSideWallSeen) return;
+
+  const float sideLossTriggerDist =
+      _m->distMm() + SPEEDRUN_PRETURN_SIDELOSS_TO_TURN_CENTER_MM -
+      _speedPreTurnRadiusMm - SPEEDRUN_PRETURN_LEAD_MM;
+  if (sideLossTriggerDist < _speedPreTurnTriggerDistMm) {
+    _speedPreTurnSideLossTriggerDistMm = sideLossTriggerDist;
+  }
+  _speedPreTurnTurnSideLostSynced = true;
+}
+
+bool AutoRunner::tryStartSpeedPreTurn() {
+  if (!_m || !_speedPreTurnArmed || _speedPreTurnExecuting) return false;
+  const float effectiveTriggerDist = _speedPreTurnTurnSideLostSynced
+      ? fminf(_speedPreTurnTriggerDistMm, _speedPreTurnSideLossTriggerDistMm)
+      : _speedPreTurnTriggerDistMm;
+  if ((_m->distMm() + SPEEDRUN_PRETURN_TRIGGER_TOL_MM) < effectiveTriggerDist) {
+    return false;
+  }
+
+  const uint8_t delta = (uint8_t)((_speedPreTurnDir + 4 - _heading) & 3);
+  if (delta != 1 && delta != 3) {
+    clearSpeedPreTurn();
+    return false;
+  }
+
+  _pendingTurnDir = _speedPreTurnDir;
+  _speedPreTurnArmed = false;
+  _speedPreTurnExecuting = true;
+  _state = State::Turn;
+  _m->autoStartSpeedTurn((delta == 3) ? -1 : +1,
+                         _speedPreTurnRadiusMm,
+                         SPEEDRUN_PRETURN_SPEED_MM_S);
+  return true;
 }
 
 bool AutoRunner::irShouldBeOn(float /*phaseMm*/) const {
@@ -402,6 +464,24 @@ bool AutoRunner::canSaveCurrentMap() const {
   return ff.chooseNext(_maze, 0, 0, Maze::N, true) != 255;
 }
 
+bool AutoRunner::persistCurrentMapToFlash() {
+  const bool routeReady = canSaveCurrentMap();
+  if (!routeReady) {
+    Serial.println("MazeStorage: saving partial maze; route from start is not fully known yet.");
+  }
+
+  if (!MazeStorage::save(_maze)) {
+    Serial.println("MazeStorage: save returned false.");
+    return false;
+  }
+
+  if (routeReady) {
+    Serial.println("MazeStorage: saved route-ready maze.");
+  }
+
+  return true;
+}
+
 void AutoRunner::startCenterAdvance(State advanceState) {
   if (!_m) return;
   _alignHeading10 = inSpeedRun() ? headingToMapYaw10(_heading) : _m->fusedYaw10();
@@ -456,7 +536,7 @@ void AutoRunner::planFromCurrentCell(bool fromMoving) {
   }
 
   if (_phase == Phase::ReturnToStart && isStartCell(_x, _y)) {
-    _savedMapReady = canSaveCurrentMap() && MazeStorage::save(_maze);
+    _savedMapReady = persistCurrentMapToFlash();
     if (!_savedMapReady) {
       _running = false;
       _state = State::Halted;
@@ -605,6 +685,9 @@ void AutoRunner::updateStraight() {
     _m->setIrEnabled(true);
     _m->autoSetStraightWallCorrection(false);
 
+    updateSpeedPreTurnSyncFromSideWall();
+    if (tryStartSpeedPreTurn()) return;
+
     while ((_state == State::Straight) && ((_m->distMm() - _centerDistMm) >= AUTO_CELL_MM)) {
       handleForwardCenterSnap(_centerDistMm + AUTO_CELL_MM);
     }
@@ -614,25 +697,9 @@ void AutoRunner::updateStraight() {
     const float phaseSr = distSr - _centerDistMm;
     updateSlowWallCorrection(phaseSr);
 
-    const IrSensors& ir = _m->ir();
-    const bool frontPreTurnHit =
-        (ir.ir2_mm() <= SPEEDRUN_PRETURN_FRONT_TRIGGER_MM) ||
-        (ir.ir3_mm() <= SPEEDRUN_PRETURN_FRONT_TRIGGER_MM);
-    const bool inPreTurnWindow =
-        (distSr + SPEEDRUN_PRETURN_TRIGGER_TOL_MM) >= _speedPreTurnTriggerDistMm;
-
-    if (_speedPreTurnArmed && !_speedPreTurnExecuting && inPreTurnWindow && frontPreTurnHit) {
-      const uint8_t delta = (uint8_t)((_speedPreTurnDir + 4 - _heading) & 3);
-      if (delta == 1 || delta == 3) {
-        _pendingTurnDir = _speedPreTurnDir;
-        _speedPreTurnArmed = false;
-        _speedPreTurnExecuting = true;
-        _state = State::Turn;
-        _m->autoStartSpeedTurn((delta == 3) ? -1 : +1);
-        return;
-      }
-      clearSpeedPreTurn();
-    }
+    // Route-armed pre-turns are distance-triggered only. Front IR remains a brake cue.
+    updateSpeedPreTurnSyncFromSideWall();
+    if (tryStartSpeedPreTurn()) return;
 
     if (!_speedPreTurnArmed && frontBrakeHit(phaseSr)) {
       if (_frontDetectCount < 255) _frontDetectCount++;
@@ -770,7 +837,7 @@ void AutoRunner::update() {
             return;
           }
 
-          _centerDistMm = _speedPreTurnCenterDistMm;
+          _centerDistMm = _m->distMm() - _speedPreTurnRadiusMm;
           _heading = _pendingTurnDir;
           _alignHeading10 = headingToMapYaw10(_heading);
           _wallBaseHeading10 = _alignHeading10;

@@ -82,12 +82,15 @@ private:
   int16_t headingToMapYaw10(uint8_t heading) const;
   void clearSpeedPreTurn();
   void armSpeedPreTurn(bool knownOpenOnly);
+  void updateSpeedPreTurnSyncFromSideWall();
+  bool tryStartSpeedPreTurn();
   void resetWallBiasState();
   void updateSlowWallCorrection(float phaseMm);
   void resetRuntimeToStart();
   void resetIndicators();
   bool launchSavedSpeedRun();
   bool canSaveCurrentMap() const;
+  bool persistCurrentMapToFlash();
   void enterSpeedRunStandby();
   void startTurnTo(uint8_t nextDir);
 
@@ -121,6 +124,12 @@ private:
   uint8_t _speedPreTurnDir = Maze::N;
   float _speedPreTurnTriggerDistMm = 0.0f;
   float _speedPreTurnCenterDistMm = 0.0f;
+  float _speedPreTurnRadiusMm = 0.0f;
+  int8_t _speedPreTurnSign = 0;
+  bool _speedPreTurnUseSideLossSync = false;
+  bool _speedPreTurnTurnSideWallSeen = false;
+  bool _speedPreTurnTurnSideLostSynced = false;
+  float _speedPreTurnSideLossTriggerDistMm = 0.0f;
 
   float _frontBrakeSnapDist = 0.0f;
   uint8_t _frontDetectCount = 0;
